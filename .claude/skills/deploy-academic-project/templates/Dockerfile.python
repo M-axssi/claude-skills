@@ -1,0 +1,66 @@
+# Multi-stage Dockerfile for Python projects
+# Optimized for academic/research code with scientific dependencies
+
+# ===== BUILD STAGE =====
+FROM python:3.11-slim AS builder
+
+WORKDIR /app
+
+# Install system dependencies that might be needed for building packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    gcc \
+    g++ \
+    gfortran \
+    libopenblas-dev \
+    liblapack-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy dependency files (layer caching optimization)
+COPY requirements.txt* pyproject.toml* setup.py* setup.cfg* environment.yml* Pipfile* ./
+
+# Install Python dependencies
+# Try requirements.txt first, then pyproject.toml, then setup.py
+RUN if [ -f "requirements.txt" ]; then \
+        echo "Installing from requirements.txt..." && \
+        pip install --user --no-cache-dir -r requirements.txt; \
+    elif [ -f "pyproject.toml" ]; then \
+        echo "Installing from pyproject.toml..." && \
+        pip install --user --no-cache-dir -e .; \
+    elif [ -f "setup.py" ]; then \
+        echo "Installing from setup.py..." && \
+        pip install --user --no-cache-dir -e .; \
+    elif [ -f "environment.yml" ]; then \
+        echo "Detected environment.yml - using Conda..." && \
+        apt-get update && apt-get install -y wget && \
+        wget -q https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh && \
+        bash Miniconda3-latest-Linux-x86_64.sh -b -p /opt/conda && \
+        rm Miniconda3-latest-Linux-x86_64.sh && \
+        /opt/conda/bin/conda env create -f environment.yml -p /opt/conda/envs/project; \
+    else \
+        echo "No dependency file found. Skipping installation."; \
+    fi
+
+# ===== RUNTIME STAGE =====
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install runtime system dependencies (minimal)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy installed packages from builder
+COPY --from=builder /root/.local /root/.local
+COPY --from=builder /opt/conda /opt/conda 2>/dev/null || true
+
+# Update PATH to include user-installed packages and conda
+ENV PATH=/root/.local/bin:/opt/conda/bin:/opt/conda/envs/project/bin:$PATH
+ENV PYTHONUNBUFFERED=1
+
+# Copy project code
+COPY . .
+
+# Default command: bash (for interactive use)
+CMD ["/bin/bash"]

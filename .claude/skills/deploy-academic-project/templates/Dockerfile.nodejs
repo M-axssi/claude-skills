@@ -1,0 +1,55 @@
+# Multi-stage Dockerfile for Node.js projects
+# Optimized for npm/yarn-based projects
+
+# ===== BUILD STAGE =====
+FROM node:20-slim AS builder
+
+WORKDIR /app
+
+# Copy package files (layer caching optimization)
+COPY package.json package-lock.json* yarn.lock* ./
+
+# Install dependencies
+RUN if [ -f "yarn.lock" ]; then \
+        echo "Installing with yarn..." && \
+        yarn install --frozen-lockfile; \
+    elif [ -f "package-lock.json" ]; then \
+        echo "Installing with npm ci..." && \
+        npm ci; \
+    else \
+        echo "Installing with npm install..." && \
+        npm install; \
+    fi
+
+# Copy source code
+COPY . .
+
+# Build if build script exists
+RUN npm run build --if-present || true
+
+# ===== RUNTIME STAGE =====
+FROM node:20-slim
+
+WORKDIR /app
+
+# Copy node_modules from builder (production only)
+COPY --from=builder /app/node_modules ./node_modules
+
+# Copy package.json for metadata
+COPY --from=builder /app/package.json ./
+
+# Copy built files
+COPY --from=builder /app/dist ./dist 2>/dev/null || true
+COPY --from=builder /app/build ./build 2>/dev/null || true
+
+# Copy source files
+COPY --from=builder /app/src ./src 2>/dev/null || true
+COPY --from=builder /app/index.js ./ 2>/dev/null || true
+COPY --from=builder /app/server.js ./ 2>/dev/null || true
+COPY --from=builder /app/app.js ./ 2>/dev/null || true
+
+# Use non-root user for security
+USER node
+
+# Default command: bash (for interactive use)
+CMD ["/bin/bash"]
