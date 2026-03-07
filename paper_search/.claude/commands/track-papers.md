@@ -14,15 +14,17 @@
 
 要追踪的方向：**$ARGUMENTS**
 
-### 第一步：读取上次查询时间
+### 第一步：读取搜索上下文（Python 脚本，零 token）
 
-读取文件 `D:/claude_tools/paper_search/paper_tracker_state.json`。
+```bash
+python D:/claude-skills/paper_search/papers_cli.py context --direction "$ARGUMENTS"
+```
 
-- 若文件不存在，将上次查询时间视为今天往前6个月。
-- 对方向名称进行模糊匹配（如"3D模型生成"和"3D model generation"视为同一方向）。
-- 若该方向不存在记录，同样视为6个月前。
+脚本输出 JSON，包含：
+- `last_date`：上次查询日期（若无记录则为6个月前）
+- `existing_titles`：该方向已有论文标题列表（用于后续去重）
 
-记录上次查询日期为 `last_date`（格式 YYYY-MM-DD）。
+记录 `last_date` 和 `existing_titles` 供后续步骤使用。
 
 ### 第二步：双源搜索新论文
 
@@ -45,16 +47,29 @@
 3. 用 `search_google_scholar_advanced`，query 为方向关键词，year_range 设为上次查询年份到今年，num_results=10
 4. 用 `search_google_scholar_advanced`，结合顶会词如 "SIGGRAPH CVPR ICCV"，num_results=10
 
-合并4轮结果，过滤出发布/上传时间晚于 `last_date` 的论文，以标题去重，候选集最多40篇。
+合并4轮搜索结果为一个 JSON，调用 Python 脚本完成日期过滤、去重、质量筛选、排序（零 LLM token）：
 
-### 第三步：排序筛选
+```bash
+echo '{
+  "papers": [ <合并后的所有搜索结果> ],
+  "existing_titles": [ <第一步获得的 existing_titles> ],
+  "date_from": "<第一步获得的 last_date>",
+  "max_results": 20
+}' | python D:/claude-skills/paper_search/filter_papers.py
+```
 
-按以下优先级排序：
-1. **与方向的相关性**（首要）
-2. **影响力**（次要）——优先顶会（SIGGRAPH、CVPR、ICCV、NeurIPS、ECCV、ACM TOG）及引用数高的论文
-3. arXiv 预印本与已发表论文同等对待
+脚本输出：
+- `filtered`：已去重、日期过滤、质量筛选、排好序的论文列表
+- `needs_author_check`：arXiv 论文中机构无法确认的部分
+- `stats`：各阶段计数
 
-最多选出 **20篇**。
+### 第三步：补充 get_author_info（仅针对 needs_author_check）
+
+对脚本输出的 `needs_author_check` 列表，调用 `get_author_info` 查询通讯作者：
+- h-index ≥ 20，或总引用数 ≥ 1000 → 加入最终列表末尾
+- 否则丢弃
+
+> 注：get_author_info 若超过 1 分钟未返回，改用 WebSearch 搜索「<作者名> Google Scholar」判断；若仍无法确认，直接丢弃。
 
 ### 第四步：展示结果
 
@@ -78,44 +93,29 @@
 
 若没有发现新论文，清晰说明。
 
-### 第五步：保存到索引
+### 第五步：保存到索引并更新追踪时间（Python 脚本，零 token）
 
-读取 `D:/claude_tools/paper_search/papers_db.json`（不存在则创建）。
+将最终论文列表（`filtered` + 通过 get_author_info 验证的论文）通过 Bash 传给脚本，脚本自动去重、写入数据库、更新追踪时间：
 
-将每篇论文添加到对应方向的列表中，以标题去重，避免重复。
+```bash
+echo '[ <最终论文列表 JSON 数组> ]' | python D:/claude-skills/paper_search/papers_cli.py save --direction "$ARGUMENTS" --type track
+```
 
-papers_db.json 格式：
+papers_db.json 中每篇论文的格式：
 ```json
 {
-  "方向名称": [
-    {
-      "title": "论文标题",
-      "authors": ["作者1", "作者2"],
-      "date": "YYYY-MM",
-      "venue": "SIGGRAPH 2025",
-      "summary": "一句话摘要。",
-      "found_at": "YYYY-MM-DD",
-      "type": "track",
-      "source": "arxiv 或 google_scholar",
-      "arxiv_id": "XXXX.XXXXX（若来自arXiv）"
-    }
-  ]
+  "title": "论文标题",
+  "authors": ["作者1", "作者2"],
+  "date": "YYYY-MM",
+  "venue": "SIGGRAPH 2025",
+  "summary": "一句话摘要。",
+  "found_at": "YYYY-MM-DD",
+  "type": "track",
+  "source": "arxiv 或 google_scholar",
+  "arxiv_id": "XXXX.XXXXX（若来自arXiv）"
 }
 ```
 
-将更新后的 JSON 写回 `D:/claude_tools/paper_search/papers_db.json`。
+脚本会同时更新 `paper_tracker_state.json` 的最后查询时间为今天。
 
-### 第六步：更新查询时间
-
-更新 `D:/claude_tools/paper_search/paper_tracker_state.json`：
-- 将 **$ARGUMENTS** 的最后查询时间设为今天（YYYY-MM-DD 格式）
-- 保留文件中其他方向的记录
-
-格式：
-```json
-{
-  "方向名称": "YYYY-MM-DD"
-}
-```
-
-最后告知用户：找到了几篇论文（arXiv/Scholar 各几篇），索引已更新，可以用 `/list-papers` 查看所有已保存的论文。
+最后告知用户：找到了几篇新论文，索引已更新，可以用 `/list-papers` 查看所有已保存的论文。

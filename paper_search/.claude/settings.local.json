@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "mcp__arxiv-mcp-server__search_papers",
+      "mcp__google-scholar__search_google_scholar_advanced",
+      "mcp__google-scholar__search_google_scholar_key_words",
+      "mcp__google-scholar__get_author_info",
+      "WebFetch(domain:github.com)"
+    ]
+  }
+}
