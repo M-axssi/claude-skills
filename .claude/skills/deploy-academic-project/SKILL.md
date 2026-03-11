@@ -44,22 +44,29 @@ Invoke this skill with a GitHub URL or local directory path:
 
 ```bash
 INPUT="$ARGUMENTS"
-WORK_DIR="/tmp/academic-project-$(date +%s)"
-mkdir -p "$WORK_DIR"
+
+# Parse optional target directory from arguments (second argument)
+# Usage: /deploy-academic-project <url-or-path> [target-dir]
+URL_OR_PATH=$(echo "$INPUT" | awk '{print $1}')
+TARGET_PARENT=$(echo "$INPUT" | awk '{print $2}')
 
 # Determine if input is URL or local path
-if [[ "$INPUT" =~ ^https?:// ]]; then
-    # GitHub URL - clone the repository
+if [[ "$URL_OR_PATH" =~ ^https?:// ]]; then
+    REPO_NAME=$(basename "$URL_OR_PATH" .git)
+    if [ -n "$TARGET_PARENT" ]; then
+        PROJECT_DIR="$TARGET_PARENT/$REPO_NAME"
+    else
+        PROJECT_DIR="$(pwd)/$REPO_NAME"
+    fi
     # IMPORTANT: Always use --recursive to fetch git submodules (e.g. libigl, Eigen)
     # Without --recursive, submodule directories will be empty and build will fail silently
-    echo "Cloning repository: $INPUT"
-    git clone --recursive "$INPUT" "$WORK_DIR"
-    cd "$WORK_DIR"
-elif [ -d "$INPUT" ]; then
-    # Local directory - copy to work directory
-    echo "Using local directory: $INPUT"
-    cp -r "$INPUT" "$WORK_DIR"
-    cd "$WORK_DIR"
+    echo "Cloning repository: $URL_OR_PATH -> $PROJECT_DIR"
+    git clone --recursive "$URL_OR_PATH" "$PROJECT_DIR"
+    cd "$PROJECT_DIR"
+elif [ -d "$URL_OR_PATH" ]; then
+    PROJECT_DIR="$(cd "$URL_OR_PATH" && pwd)"
+    echo "Using local directory: $PROJECT_DIR"
+    cd "$PROJECT_DIR"
     # Initialize submodules if present in local repo
     if [ -f ".gitmodules" ]; then
         echo "Found .gitmodules - initializing submodules..."
@@ -69,6 +76,8 @@ else
     echo "Error: Invalid input. Provide a GitHub URL or local directory path."
     exit 1
 fi
+
+WORK_DIR="$PROJECT_DIR"
 ```
 
 ### Step 2: Detect Project Type
@@ -207,23 +216,25 @@ echo "========================================="
 echo ""
 echo "Docker image: $IMAGE_NAME:latest"
 echo ""
-echo "To run the environment interactively:"
-echo "  docker run -it --rm $IMAGE_NAME:latest"
+echo "RECOMMENDED: Mount source code and results directory for full sync:"
+echo "  Source code changes take effect immediately (no rebuild needed)"
+echo "  Results are saved directly to your local project directory"
 echo ""
-echo "To run with volume mount (persist output files):"
-echo "  docker run -it --rm -v \$(pwd)/output:/app/output $IMAGE_NAME:latest"
+echo "To run interactively with full sync:"
+echo "  docker run -it --rm --gpus all -v $PROJECT_DIR:/app $IMAGE_NAME:latest"
 echo ""
-echo "NOTE: Data written inside the container is lost when container is removed."
-echo "      Use -v to mount a host directory for any files you want to keep."
+echo "NOTE: -v $PROJECT_DIR:/app mounts your entire project into the container."
+echo "      Code edits on host are immediately visible inside the container."
+echo "      All output files written to /app (e.g. /app/results) appear on host."
 echo ""
 
 case "$PROJECT_TYPE" in
     python)
-        echo "To run Python code:"
-        echo "  docker run -it --rm $IMAGE_NAME:latest python your_script.py"
+        echo "To run a Python script with full sync:"
+        echo "  docker run --rm --gpus all -v $PROJECT_DIR:/app $IMAGE_NAME:latest python your_script.py"
         echo ""
-        echo "To start Jupyter Notebook (if installed):"
-        echo "  docker run -it --rm -p 8888:8888 $IMAGE_NAME:latest jupyter notebook --ip=0.0.0.0 --allow-root"
+        echo "To start Jupyter Notebook:"
+        echo "  docker run -it --rm --gpus all -p 8888:8888 -v $PROJECT_DIR:/app $IMAGE_NAME:latest jupyter notebook --ip=0.0.0.0 --allow-root"
         ;;
     cpp)
         echo "Compiled binaries are in: /app/build/ or per-example subdirectories"
