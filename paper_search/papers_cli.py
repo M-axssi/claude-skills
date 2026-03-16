@@ -134,17 +134,17 @@ def cmd_list(args_str: str):
             return
         sorted_papers = sorted(papers, key=lambda p: p.get(sort_key, ""), reverse=True)
         print(f"--- {label} ---\n")
-        print("| # | 论文 | 作者 | 日期 | 发表于 | 摘要 |")
-        print("|---|------|------|------|--------|------|")
         for i, p in enumerate(sorted_papers, 1):
             authors = p.get("authors", [])
             author_str = "、".join(authors[:2]) + ("等" if len(authors) > 2 else "")
             venue = p.get("venue") or (f"arXiv:{p['arxiv_id']}" if p.get("arxiv_id") else "arXiv")
             summary = p.get("summary", "")
-            if len(summary) > 60:
-                summary = summary[:60] + "…"
-            print(f"| {i} | **{p['title']}** | {author_str} | {p.get('date', '—')} | {venue} | {summary} |")
-        print()
+            print(f"{i:>2}. {p['title']}")
+            print(f"    {author_str}  |  {p.get('date', '—')}  |  {venue}")
+            if summary:
+                print(f"    {summary}")
+            print()
+
 
     if type_filter == "track":
         print_group(track_papers, "追踪论文（按时间倒序）", "found_at")

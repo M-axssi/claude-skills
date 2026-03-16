@@ -29,4 +29,4 @@
 python D:/claude-skills/paper_search/papers_cli.py list "$ARGUMENTS"
 ```
 
-将脚本输出直接呈现给用户，无需进一步处理。
+调用 Bash 工具执行上述命令后，**不用对输出文字做任何处理，不要输出任何额外文字**，工具结果即为最终输出。

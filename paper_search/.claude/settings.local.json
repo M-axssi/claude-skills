@@ -6,7 +6,14 @@
       "mcp__google-scholar__search_google_scholar_advanced",
       "mcp__google-scholar__search_google_scholar_key_words",
       "mcp__google-scholar__get_author_info",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(python:*)",
+      "Bash(python3 -c \":*)",
+      "Bash(powershell -Command \":*)",
+      "Bash(mkdir -p /tmp/tz_extract)",
+      "Read(//tmp/**)",
+      "Bash(unzip -o \"E:/Topaz/models/models/gde-v1-fp32-192x192-1x-ov.tz\" \"*.xml\")",
+      "Bash(\"E:\\\\miniconda\\\\envs\\\\body\\\\python.exe\" -c \":*)"
     ]
   }
 }
