@@ -485,6 +485,36 @@ RUN apt-get update && apt-get install -y \
 - For packages requiring compilation: Already included in builder stage
 - For Conda packages: Use `environment.yml` instead of `requirements.txt`
 
+### [CUDA] PyTorch CUDA extension build fails with "No module named 'torch'"
+
+pip's build isolation creates a clean env without torch. Fix:
+```bash
+pip install --no-build-isolation /path/to/extension
+```
+Applies to: nvdiffrast, diffoctreerast, diff-gaussian-rasterization, and any `setup.py` that `import torch`.
+
+### [CUDA] conda install torch fails with "undefined symbol: iJIT_NotifyEvent"
+
+Intel MKL version conflict. Use pip instead:
+```bash
+pip install torch==2.4.0 torchvision==0.19.0 --index-url https://download.pytorch.org/whl/cu118
+```
+
+### [CUDA] Multiple packages install conflicting nvidia-*-cuXX versions
+
+torch, flash-attn, xformers each pull in `nvidia-*-cu11/12` packages at different versions, causing symbol errors like `undefined symbol: __nvJitLinkAddData_12_1`. Fix: pin all packages to the same CUDA version family (all cu118 or all cu121), and reinstall conflicting packages explicitly.
+
+### [CUDA] setup.sh case matching fails silently for PyTorch version strings
+
+`$PYTORCH_VERSION` may be `2.4.0+cu118` (with suffix), but case branches match only `2.4.0`. Check the actual string before running setup.sh:
+```bash
+python -c "import torch; print(torch.__version__)"
+```
+
+### [CUDA] wget-downloaded wheel rejected by pip as invalid
+
+pip validates wheel filenames — they must follow `name-ver-pytag-abitag-platformtag.whl`. Downloading with `-O short-name.whl` strips required tags. Fix: preserve the original filename or rename to the full format before `pip install`.
+
 ### C++ compilation fails
 
 - Ensure source code is in `src/` or `include/` directories
